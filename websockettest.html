@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>WebSocket Location Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 40px auto;
+            padding: 20px;
+        }
+
+        input, button {
+            padding: 8px;
+            margin: 5px 0;
+            width: 100%;
+            box-sizing: border-box;
+        }
+
+        button {
+            cursor: pointer;
+        }
+
+        #log {
+            background: #111;
+            color: #0f0;
+            padding: 15px;
+            min-height: 250px;
+            white-space: pre-wrap;
+            overflow-y: auto;
+        }
+    </style>
+</head>
+
+<body>
+
+<h1>Shipper WebSocket Test</h1>
+
+<label>JWT Token</label>
+<input id="token" type="text" placeholder="Paste JWT here">
+
+<button onclick="connect()">Connect</button>
+<button onclick="sendLocation()">Send Location</button>
+<button onclick="disconnect()">Disconnect</button>
+
+<h3>Log</h3>
+<pre id="log"></pre>
+
+<!-- STOMP.js -->
+<script src="https://cdn.jsdelivr.net/npm/@stomp/stompjs@7.1.1/bundles/stomp.umd.min.js"></script>
+
+<script>
+    let client = null;
+
+    function log(message) {
+        const logElement = document.getElementById("log");
+        logElement.textContent += message + "\n";
+        logElement.scrollTop = logElement.scrollHeight;
+        console.log(message);
+    }
+
+    function connect() {
+        const token = document.getElementById("token").value.trim();
+
+        if (!token) {
+            log("ERROR: JWT token is required");
+            return;
+        }
+
+        client = new StompJs.Client({
+            brokerURL: "ws://localhost:8080/ws",
+
+            connectHeaders: {
+                Authorization: "Bearer " + token
+            },
+
+            reconnectDelay: 0,
+
+            debug: function (message) {
+                log("[STOMP] " + message);
+            },
+
+            onConnect: function (frame) {
+                log("========== CONNECTED ==========");
+                log(JSON.stringify(frame.headers));
+
+                setTimeout(() => {
+                    sendLocation();
+                }, 1000);
+            },
+
+            onStompError: function (frame) {
+                log("========== STOMP ERROR ==========");
+                log("message: " + frame.headers["message"]);
+                log("body: " + frame.body);
+            },
+
+            onWebSocketClose: function (event) {
+                log("========== WEBSOCKET CLOSED ==========");
+                log("code: " + event.code);
+                log("reason: " + event.reason);
+                log("wasClean: " + event.wasClean);
+            },
+
+            onWebSocketError: function (event) {
+                log("========== WEBSOCKET ERROR ==========");
+                console.error(event);
+            }
+        });
+
+        log("Connecting to ws://localhost:8080/ws ...");
+
+        client.activate();
+    }
+
+    function sendLocation() {
+        if (!client || !client.connected) {
+            log("ERROR: WebSocket is not connected");
+            return;
+        }
+
+        const location = {
+            latitude: 10.7769,
+            longitude: 105.7009
+        };
+
+        client.publish({
+            destination: "/app/location",
+            body: JSON.stringify(location)
+        });
+
+        log("Location sent:");
+        log(JSON.stringify(location));
+    }
+
+    function disconnect() {
+        if (client) {
+            client.deactivate();
+            log("Disconnected");
+        }
+    }
+</script>
+
+</body>
+</html>
