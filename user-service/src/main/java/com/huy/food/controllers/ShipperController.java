@@ -4,7 +4,7 @@ import com.huy.food.dtos.ApiResponse;
 import com.huy.food.dtos.requests.CreateShipperRequest;
 import com.huy.food.dtos.requests.UpdateShipperRequest;
 import com.huy.food.dtos.responses.ShipperResponse;
-import com.huy.food.dtos.locations.ShipperLocation;
+import com.huy.food.dtos.locations.ShipperLocationRequest;
 import com.huy.food.securities.UserPrincipal;
 import com.huy.food.services.ShipperService;
 import jakarta.validation.Valid;
@@ -66,7 +66,7 @@ public class ShipperController {
 
     @MessageMapping("/location")
     public void sendLocation(
-            ShipperLocation location,
+            ShipperLocationRequest location,
             Principal principal
     ) {
         Authentication authentication = (Authentication) principal;

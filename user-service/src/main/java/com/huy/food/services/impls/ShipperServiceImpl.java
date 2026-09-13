@@ -1,10 +1,11 @@
 package com.huy.food.services.impls;
 
 import com.huy.food.dtos.locations.Cell;
+import com.huy.food.dtos.locations.ShipperLocation;
 import com.huy.food.dtos.requests.CreateShipperRequest;
 import com.huy.food.dtos.requests.UpdateShipperRequest;
 import com.huy.food.dtos.responses.ShipperResponse;
-import com.huy.food.dtos.locations.ShipperLocation;
+import com.huy.food.dtos.locations.ShipperLocationRequest;
 import com.huy.food.entities.Shipper;
 import com.huy.food.entities.User;
 import com.huy.food.enums.AccountRole;
@@ -21,6 +22,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -32,13 +34,14 @@ public class ShipperServiceImpl implements ShipperService {
     private final UserService userService;
     private final ShipperMapper mapper;
 
-    private final Map<Cell,List<UUID>> cellMap = new ConcurrentHashMap<>();
+    private final Map<Cell, Set<UUID>> cellMap = new ConcurrentHashMap<>();
     private final Map<UUID, ShipperLocation> shipperLocationMap = new ConcurrentHashMap<>();
-    private final double originLat = 10.0;
-    private final double originLng = 106.0;
-    private final double metersPerLat = 111320.0;
-    private final double metersPerLng = metersPerLat * Math.cos(Math.toRadians(originLat));
-    private final int CELL_SIZE=500;
+    private static final double ORIGIN_LAT = 10.0;
+    private static final double ORIGIN_LNG = 106.0;
+    private static final double METERS_PER_LAT = 111_320.0;
+    private static final double METERS_PER_LNG = METERS_PER_LAT * Math.cos(Math.toRadians(ORIGIN_LAT));
+    private static final int CELL_SIZE = 500;
+    private final ConcurrentHashMap<UUID, Object> shipperLocks = new ConcurrentHashMap<>();
 
     @Override
     @Transactional(readOnly = true)
@@ -99,18 +102,36 @@ public class ShipperServiceImpl implements ShipperService {
     }
 
     @Override
-    public void sendLocation(UUID shipperId, ShipperLocation location) {
-        log.info("shipperId={}, location={}", shipperId, location);
-        shipperLocationMap.put(shipperId, location);
-        log.info("All shipper location");
-        shipperLocationMap.forEach((key, value)
-                -> log.info("Shipper id {}, location {}", key, shipperLocationMap.get(key)));
+    public void sendLocation(UUID shipperId, ShipperLocationRequest request) {
+        log.info("shipperId={}, location={}", shipperId, request);
+        Object lock = shipperLocks.computeIfAbsent(shipperId, id -> new Object());
+        synchronized (lock) {
+            ShipperLocation oldLocation = shipperLocationMap.get(shipperId);
+            if (oldLocation != null && request.sequence() <= oldLocation.sequence()) {
+                log.info("Stale location update, shipperId={}, " + "oldSequence={}, currentSequence={}",
+                        shipperId, oldLocation.sequence(), request.sequence());
+                return;
+            }
 
-        int xMeters = (int) ((location.longitude() - originLng) * metersPerLng);
-        int yMeters = (int) ((location.latitude() - originLat) * metersPerLat);
-        int cellX = (int) (double) (xMeters / 500);
-        int cellY = (int) (double) (yMeters / 500);
-        Cell cell = new Cell(cellX, cellY);
+            int cellX = (int) Math.floor((request.longitude() - ORIGIN_LNG) * METERS_PER_LNG / CELL_SIZE);
+            int cellY = (int) Math.floor((request.latitude() - ORIGIN_LAT) * METERS_PER_LAT / CELL_SIZE);
+
+            Cell newCell = new Cell(cellX, cellY);
+
+            if (oldLocation != null && !oldLocation.cell().equals(newCell)) {
+                Set<UUID> oldShippers = cellMap.get(oldLocation.cell());
+                if (oldShippers != null) {
+                    oldShippers.remove(shipperId);
+                }
+            }
+
+            ShipperLocation newLocation = new ShipperLocation(request.latitude(), request.longitude(), newCell, request.sequence());
+            shipperLocationMap.put(shipperId, newLocation);
+            cellMap.computeIfAbsent(newCell, k -> ConcurrentHashMap.newKeySet()).add(shipperId);
+            log.info("All shipper location");
+            shipperLocationMap.forEach((key, value)
+                    -> log.info("Shipper id {}, location {}", key, shipperLocationMap.get(key)));
+        }
     }
 
     private Shipper getShipperById(UUID id) {

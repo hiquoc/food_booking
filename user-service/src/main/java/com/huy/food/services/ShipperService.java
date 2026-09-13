@@ -3,7 +3,7 @@ package com.huy.food.services;
 import com.huy.food.dtos.requests.CreateShipperRequest;
 import com.huy.food.dtos.requests.UpdateShipperRequest;
 import com.huy.food.dtos.responses.ShipperResponse;
-import com.huy.food.dtos.locations.ShipperLocation;
+import com.huy.food.dtos.locations.ShipperLocationRequest;
 
 import java.util.List;
 import java.util.UUID;
@@ -16,5 +16,5 @@ public interface ShipperService {
     ShipperResponse updateShipper(UUID shipperId, UpdateShipperRequest request);
     void deleteShipper(UUID shipperId);
 
-    void sendLocation(UUID shipperId, ShipperLocation message);
+    void sendLocation(UUID shipperId, ShipperLocationRequest message);
 }
